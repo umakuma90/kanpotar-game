@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanpotar - Juego</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f4;
+        }
+        canvas {
+            display: block;
+            margin: 20px auto;
+            background-color: #eeeeee;
+            border: 2px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Kanpotar - Juego</h1>
+    <p id="vidas">Vidas: 3</p>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <script>
+        // Configuración básica del canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Cargar las imágenes
+        const runFrames = [new Image(), new Image()];
+        runFrames[0].src = 'cantautor-correr1.png'; // Primer fotograma
+        runFrames[1].src = 'cantautor-correr2.png'; // Segundo fotograma
+        const duckImage = new Image();
+        duckImage.src = 'cantautor-agachado.png'; // Imagen del cantautor agachado
+        const attackImage = new Image();
+        attackImage.src = 'cantautor-golpe.png'; // Nueva imagen de Kanpotar golpeando
+
+        // Variables del juego
+        let x = 50; // Posición horizontal del personaje
+        let y = canvas.height - 150 - 50; // Posición vertical inicial del personaje (altura del suelo)
+        const groundHeight = 50; // Altura del suelo marrón
+        let jump = false;
+        let duck = false;
+        let attacking = false; // Bandera para determinar si está atacando
+        let velocityY = 0;
+        let speed = 5; // Velocidad inicial
+        let direction = 1; // Dirección: 1 = derecha, -1 = izquierda
+        let lives = 3; // Vidas del jugador
+
+        // Tamaño del personaje
+        const characterWidth = 150; // Ancho del personaje
+        const characterHeight = 150; // Alto del personaje
+
+        // Variables del salto
+        const jumpHeight = -15; // Altura del salto
+        const gravity = 0.6; // Gravedad
+
+        // Variables del hitbox (zona de colisión)
+        const hitboxOffset = { x: 40, y: 40 }; // Margen desde los bordes
+        const hitboxWidth = characterWidth - hitboxOffset.x * 2;
+        const hitboxHeight = characterHeight - hitboxOffset.y * 2;
+
+        // Animación para correr
+        let currentFrame = 0; // Fotograma actual
+        const frameInterval = 100; // Intervalo entre fotogramas (en milisegundos)
+        setInterval(() => {
+            if (!duck && !attacking) {
+                currentFrame = (currentFrame + 1) % runFrames.length; // Alterna entre los fotogramas
+            }
+        }, frameInterval);
+
+        // Obstáculos
+        const obstacles = [];
+        const obstacleWidth = 50;
+        const obstacleHeight = 50;
+        const obstacleSpeed = 5;
+
+        // Función para generar obstáculos
+        function spawnObstacle() {
+            obstacles.push({
+                x: canvas.width,
+                y: canvas.height - groundHeight - obstacleHeight,
+            });
+        }
+
+        // Función para manejar el salto
+        function handleJump() {
+            if (!jump) {
+                jump = true;
+                velocityY = jumpHeight;
+            }
+        }
+
+        // Función para manejar el agachado
+        function handleDuck(state) {
+            duck = state; // true para agacharse, false para levantarse
+        }
+
+        // Función para manejar el ataque
+        function handleAttack() {
+            if (!attacking) {
+                attacking = true;
+                setTimeout(() => {
+                    attacking = false; // Vuelve al estado normal después del ataque
+                }, 500); // Duración del ataque
+            }
+        }
+
+        // Detección de colisiones
+        function checkCollision(obstacle) {
+            const hitboxX = x + hitboxOffset.x;
+            const hitboxY = y + hitboxOffset.y;
+            return (
+                hitboxX < obstacle.x + obstacleWidth &&
+                hitboxX + hitboxWidth > obstacle.x &&
+                hitboxY < obstacle.y + obstacleHeight &&
+                hitboxY + hitboxHeight > obstacle.y
+            );
+        }
+
+        // Dibujar el suelo
+        function drawGround() {
+            ctx.fillStyle = '#654321'; // Color del suelo
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+        }
+
+        // Dibujar el personaje
+        function drawCharacter() {
+            let image;
+            if (attacking) {
+                image = attackImage; // Imagen de ataque
+            } else if (duck) {
+                image = duckImage; // Imagen de agachado
+            } else {
+                image = runFrames[currentFrame]; // Imagen de correr
+            }
+
+            ctx.save();
+            if (direction === -1) {
+                ctx.scale(-1, 1); // Invierte la dirección horizontal
+                ctx.drawImage(image, -x - characterWidth, y, characterWidth, characterHeight);
+            } else {
+                ctx.drawImage(image, x, y, characterWidth, characterHeight);
+            }
+            ctx.restore();
+        }
+
+        // Bucle principal del juego
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpia el canvas
+
+            // Dibujar el suelo
+            drawGround();
+
+            // Gravedad y movimiento vertical
+            if (jump) {
+                y += velocityY;
+                velocityY += gravity;
+                if (y >= canvas.height - groundHeight - characterHeight) {
+                    y = canvas.height - groundHeight - characterHeight;
+                    jump = false;
+                }
+            }
+
+            // Dibujar el personaje
+            drawCharacter();
+
+            // Dibujar y mover obstáculos
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obstacle = obstacles[i];
+                obstacle.x -= obstacleSpeed;
+                ctx.fillStyle = 'red';
+                ctx.fillRect(obstacle.x, obstacle.y, obstacleWidth, obstacleHeight);
+
+                // Revisar colisión
+                if (checkCollision(obstacle)) {
+                    obstacles.splice(i, 1); // Elimina el obstáculo
+                    lives--; // Resta una vida
+                    document.getElementById('vidas').textContent = `Vidas: ${lives}`;
+                    if (lives <= 0) {
+                        alert('¡Game Over!');
+                        lives = 3; // Reinicia las vidas
+                        obstacles.length = 0; // Reinicia los obstáculos
+                        document.getElementById('vidas').textContent = `Vidas: ${lives}`;
+                    }
+                }
+
+                // Elimina obstáculos fuera de pantalla
+                if (obstacle.x + obstacleWidth < 0) {
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(gameLoop); // Llama al bucle del juego
+        }
+
+        // Generar obstáculos cada 2 segundos
+        setInterval(spawnObstacle, 2000);
+
+        // Evento para detectar las teclas
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space') handleJump(); // Salto
+            if (event.code === 'ArrowDown') handleDuck(true); // Agacharse
+            if (event.code === 'ArrowRight') {
+                direction = 1;
+                x += speed; // Mover a la derecha
+            }
+            if (event.code === 'ArrowLeft') {
+                direction = -1;
+                x -= speed; // Mover a la izquierda
+            }
+            if (event.code === 'KeyC') handleAttack(); // Golpear
+        });
+
+        document.addEventListener('keyup', (event) => {
+            if (event.code === 'ArrowDown') handleDuck(false); // Dejar de agacharse
+        });
+
+        // Inicia el bucle del juego cuando las imágenes se hayan cargado
+        runFrames[0].onload = () => {
+            runFrames[1].onload = () => {
+                duckImage.onload = () => {
+                    attackImage.onload = () => {
+                        gameLoop();
+                    };
+                };
+            };
+        };
+    </script>
+</body>
+</html>
