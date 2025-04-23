@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanpotar - Juego</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f4;
+        }
+        canvas {
+            display: block;
+            margin: 20px auto;
+            background-color: #eeeeee;
+            border: 2px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Kanpotar - Juego</h1>
+    <p id="vidas">Vidas: 3</p>
+    <p id="nivel">Nivel: 1</p>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const runFrames = [new Image(), new Image()];
+        runFrames[0].src = 'cantautor-correr1.png';
+        runFrames[1].src = 'cantautor-correr2.png';
+        const duckImage = new Image();
+        duckImage.src = 'cantautor-agachado.png';
+        const attackImage = new Image();
+        attackImage.src = 'cantautor-golpe.png';
+
+        const enemyImage = new Image();
+        enemyImage.src = 'enemy.png'; // Imagen del enemigo
+
+        let currentFrame = 0;
+        const frameInterval = 100;
+        setInterval(() => {
+            if (!duck && !attacking) {
+                currentFrame = (currentFrame + 1) % runFrames.length;
+            }
+        }, frameInterval);
+
+        let x = 50;
+        let y = canvas.height - 125 - 50;
+        const groundHeight = 50;
+        let jump = false;
+        let duck = false;
+        let attacking = false;
+        let velocityY = 0;
+        const characterWidth = 125;
+        const characterHeight = 125;
+        let velocityX = 0; // Velocidad horizontal del personaje
+
+        const jumpHeight = -15;
+        const gravity = 0.6;
+        const moveSpeed = 5; // Velocidad de movimiento horizontal
+        let direction = 1;
+        let lives = 3;
+
+        const obstacles = [];
+        const obstacleWidth = 50;
+        const obstacleHeight = 50;
+        let obstaclesCleared = 0; // Contador de obstáculos esquivados
+
+        let enemy = null; // Instancia del enemigo
+
+        // Ajustar bounding box del personaje (área visible)
+        const boundingBox = {
+            offsetX: 10,
+            offsetY: 20,
+            width: characterWidth,
+            height: 110
+        };
+
+        // Función para dibujar al personaje
+        function drawCharacter() {
+            let image;
+            let drawHeight = characterHeight; // Por defecto, la altura normal
+            let drawY = y;
+
+            if (attacking) {
+                image = attackImage;
+            } else if (duck) {
+                image = duckImage;
+                drawHeight = characterHeight - 55; // Altura reducida al agacharse
+                drawY = y + 55; // Ajustar posición vertical al agacharse
+            } else {
+                image = runFrames[currentFrame];
+            }
+
+            ctx.save();
+            if (direction === -1) {
+                ctx.scale(-1, 1);
+                ctx.drawImage(image, -x - characterWidth, drawY, characterWidth, drawHeight);
+            } else {
+                ctx.drawImage(image, x, drawY, characterWidth, drawHeight);
+            }
+            ctx.restore();
+        }
+
+        // Función para dibujar el suelo
+        function drawGround() {
+            ctx.fillStyle = '#654321';
+            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
+        }
+
+        // Función para dibujar obstáculos
+        function drawObstacles() {
+            for (const obstacle of obstacles) {
+                ctx.fillStyle = obstacle.type === 'red' ? 'red' : 'green';
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            }
+        }
+
+        // Función para mover obstáculos
+        function moveObstacles() {
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].x -= 5;
+                if (obstacles[i].x + obstacles[i].width < 0) {
+                    obstacles.splice(i, 1);
+                    obstaclesCleared++; // Incrementar contador de obstáculos esquivados
+					console.log('Obstáculos esquivados: ${obstaclesCleared}'); //Depuración
+                    if (obstaclesCleared === 15) {
+                        spawnEnemy(); // Generar enemigo después de 36 obstáculos
+                    }
+                }
+            }
+        }
+
+        // Generar un enemigo
+        function spawnEnemy() {
+			console.log("Generando enemigo...");
+            enemy = {
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                width: characterWidth * 1.5, // Enemigo 50% más grande
+                height: characterHeight * 1.5,
+                vx: 3, // Velocidad horizontal
+                vy: 3, // Velocidad vertical
+                lives: 3, // Vidas del enemigo
+                vulnerable: false, // Estado de vulnerabilidad
+				bullets: [], //Lista de proyectiles disparados
+				bulletsShot: 0 //Contador de bolitas disparadas
+            };
+
+        		// Temporizador para disparar bolitas
+           enemy.shootInterval = setInterval(() => {
+               if (!enemy.vulnerable) {
+                   enemyShoot();
+       			}
+    		}, 500); // Dispara una bolita cada segundo
+
+    			// Temporizador para gestionar el estado vulnerable
+   			enemy.vulnerableTimeout = null;
+		}
+		
+				
+				// **Nueva función: enemyShoot**
+		function enemyShoot() {
+    		if (enemy.bulletsShot < 5) {
+       		 // Crear una nueva bolita
+       		 	enemy.bullets.push({
+            	x: enemy.x + enemy.width / 2,
+            	y: enemy.y + enemy.height / 2,
+            	vx: -5, // Velocidad horizontal de las bolitas
+            	vy: 0, // En este caso, las bolitas no caen
+            	size: 10 // Tamaño de la bolita
+       		 	});
+        		enemy.bulletsShot++;
+    		} else {
+        		// Entra en estado vulnerable después de 5 disparos
+        		enemy.vulnerable = true;
+       			enemy.bulletsShot = 0; // Reiniciar contador de disparos
+       			clearInterval(enemy.shootInterval); // Detener disparos
+
+      			  // Cambiar al estado vulnerable (color rojo)
+       		 	enemy.color = "red";
+
+        			// Salir del estado vulnerable después de 5 segundos
+       			enemy.vulnerableTimeout = setTimeout(() => {
+            		enemy.vulnerable = false;
+           			enemy.color = ""; // Restaurar color original
+           			enemy.shootInterval = setInterval(enemyShoot, 1000); // Disparar otra vez
+       		 	}, 5000); // 5 segundos de vulnerabilidad
+    		}
+		}
+
+			// **Nueva función: checkEnemyProjectilesCollision**
+		function checkEnemyProjectilesCollision() {
+   			for (let i = enemy.bullets.length - 1; i >= 0; i--) {
+       			const bullet = enemy.bullets[i];
+
+        	// Mover la bolita
+       			bullet.x += bullet.vx;
+       			bullet.y += bullet.vy;
+			}
+        // Si la bolita golpea al personaje
+       		if (
+            	x + boundingBox.offsetX < bullet.x + bullet.size &&
+            	x + boundingBox.offsetX + boundingBox.width > bullet.x &&
+            	y + boundingBox.offsetY < bullet.y + bullet.size &&
+            	y + boundingBox.offsetY + boundingBox.height > bullet.y
+        	) {
+           		 lives--; // Quitar una vida al personaje
+           		 document.getElementById("vidas").textContent = `Vidas: ${lives}`;
+            	enemy.bullets.splice(i, 1); // Eliminar la bolita
+
+            	if (lives <= 0) {
+                alert("Game Over!");
+                window.location.reload();
+           	 	}
+       		 }
+
+        	// Eliminar bolitas que salen del canvas
+       		if (bullet.x < 0 || bullet.x > canvas.width) {
+           		 enemy.bullets.splice(i, 1);
+       		}
+  		}
+		
+
+        // Función para dibujar al enemigo
+        function drawEnemy() {
+            if (enemy) {
+                ctx.drawImage(
+                    enemyImage,
+                    enemy.x,
+                    enemy.y,
+                    enemy.width,
+                    enemy.height
+                );
+            }
+        }
+
+        // Función para mover al enemigo
+        function moveEnemy() {
+            if (enemy) {
+               		 // Movimiento básico del enemigo (horizontal y vertical)
+                	enemy.x += enemy.vx;
+                	enemy.y += enemy.vy;
+
+                	// Limitar movimiento dentro del canvas
+                if (enemy.x <= 0 || enemy.x + enemy.width >= canvas.width) {
+                    enemy.vx *= -1; // Cambiar dirección horizontal
+                }
+                if (enemy.y <= 0 || enemy.y + enemy.height >= canvas.height - groundHeight) {
+                    enemy.vy *= -1; // Cambiar dirección vertical
+                }
+
+                // Verificar si el enemigo salta sobre el personaje
+                if (
+                    x + boundingBox.offsetX < enemy.x + enemy.width &&
+                    x + boundingBox.offsetX + boundingBox.width > enemy.x &&
+                    y + boundingBox.offsetY < enemy.y + enemy.height &&
+                    y + boundingBox.offsetY + boundingBox.height > enemy.y &&
+                    !enemy.vulnerable
+                ) {
+                    // El enemigo daña al personaje
+                    lives--;
+                    document.getElementById('vidas').textContent = `Vidas: ${lives}`;
+                    if (lives <= 0) {
+                        alert('Game Over!');
+                        window.location.reload();
+                    }
+                }
+            }
+        }
+
+        // Función para verificar colisiones con el enemigo
+        function checkEnemyCollision() {
+            if (enemy && enemy.vulnerable) {
+                if (
+                    x + boundingBox.offsetX < enemy.x + enemy.width &&
+                    x + boundingBox.offsetX + boundingBox.width > enemy.x &&
+                    y + boundingBox.offsetY < enemy.y + enemy.height &&
+                    y + boundingBox.offsetY + boundingBox.height > enemy.y
+                ) {
+                    // Golpear al enemigo si está vulnerable
+                    enemy.lives--;
+                    if (enemy.lives <= 0) {
+                        enemy = null; // Eliminar al enemigo si pierde todas las vidas
+                    }
+                }
+            }
+        }
+
+        // Bucle principal del juego
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Aplicar gravedad y movimiento horizontal
+            if (jump) {
+                y += velocityY;
+                velocityY += gravity;
+                if (y >= canvas.height - groundHeight - characterHeight) {
+                    y = canvas.height - groundHeight - characterHeight;
+                    jump = false;
+                }
+            }
+            x += velocityX; // Aplicar movimiento horizontal
+            if (x < 0) x = 0; // Limitar movimiento a la izquierda
+            if (x + characterWidth > canvas.width) x = canvas.width - characterWidth; // Limitar movimiento a la derecha
+			// Ajustar bounding box si está agachado
+			if (duck) {
+   				boundingBox.offsetY = 95;   // → parte superior de la hitbox (cuando agachado)
+  				boundingBox.height = 30;    // → altura más baja para el estado agachado
+			} else {
+   				boundingBox.offsetY = 20;   // → parte superior de la hitbox cuando está de pie
+    			boundingBox.height = 110;   // → altura total del personaje cuando está de pie
+			}
+
+            drawGround();
+            drawCharacter();
+            drawObstacles();
+            moveObstacles();
+            moveEnemy();
+            drawEnemy();
+			checkCollisions(); // Verificar colisiones con obstáculos
+    		if (enemy) {
+				checkEnemyCollision(); // Verificar colisiones con el enemigo
+    			checkEnemyProjectilesCollision(); // Verificar colisiones con las bolitas
+			}
+			// Dibujar bolitas del enemigo
+    		if (enemy && enemy.bullets) {
+				enemy.bullets.forEach((bullet) => {
+       				ctx.fillStyle = "black";
+       				ctx.beginPath();
+       				ctx.arc(bullet.x, bullet.y, bullet.size, 0, Math.PI * 2);
+        			ctx.fill();
+    			});		
+	        requestAnimationFrame(gameLoop);
+        	}
+		}
+
+        // Controles del teclado
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space' && !jump) {
+                jump = true;
+                velocityY = jumpHeight;
+            } else if (event.code === 'ArrowDown') {
+                duck = true;
+            } else if (event.code === 'ArrowLeft') {
+                velocityX = -moveSpeed; // Mover hacia la izquierda
+                direction = -1;
+            } else if (event.code === 'ArrowRight') {
+                velocityX = moveSpeed; // Mover hacia la derecha
+                direction = 1;
+            } else if (event.code === 'KeyA') {
+                attacking = true;
+            }
+        });
+
+        document.addEventListener('keyup', (event) => {
+            if (event.code === 'ArrowDown') {
+                duck = false;
+            } else if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
+                velocityX = 0; // Detener movimiento horizontal
+            } else if (event.code === 'KeyA') {
+                attacking = false;
+            }
+        });
+
+        // Generar obstáculos rojos y verdes con opción flotante
+        setInterval(() => {
+            if (!enemy) {
+                const isRed = Math.random() > 0.5; // 50% de probabilidad de ser rojo o verde
+                const isFloating = Math.random() > 0.5; // 50% de probabilidad de ser flotante
+                obstacles.push({
+                    x: canvas.width,
+                    y: isFloating
+                        ? canvas.height - groundHeight - obstacleHeight - 100 // Posición flotante
+                        : canvas.height - groundHeight - obstacleHeight, // Posición normal
+                    width: obstacleWidth,
+                    height: obstacleHeight,
+                    type: isRed ? 'red' : 'green'
+                });
+            }
+        }, 2000);
+		
+		// **Agregar la función checkCollisions aquí (debajo de la generación de obstáculos)**
+		function checkCollisions() {
+    		for (let i = obstacles.length - 1; i >= 0; i--) {
+        		const obstacle = obstacles[i];
+
+        		// Verificar colisión con el personaje
+        		if (
+            		x + boundingBox.offsetX < obstacle.x + obstacle.width &&
+           			x + boundingBox.offsetX + boundingBox.width > obstacle.x &&
+            		y + boundingBox.offsetY < obstacle.y + obstacle.height &&
+            		y + boundingBox.offsetY + boundingBox.height > obstacle.y
+        		) {
+
+            		// Obstáculos rojos: Quitar vida si hay colisión
+            		if (obstacle.type === 'red') {
+               			lives--; // Resta una vida al personaje
+                		document.getElementById('vidas').textContent = `Vidas: ${lives}`;
+                		obstacles.splice(i, 1); // Eliminar obstáculo tras colisión
+
+                		if (lives <= 0) {
+                   			alert('Game Over!');
+                    		window.location.reload();
+                		}
+           			 }
+
+            		// Obstáculos verdes: Quitar vida si no se destruyen
+           			else if (obstacle.type === 'green') {
+                		if (attacking) {
+                    		// Si el personaje está atacando, destruir obstáculo
+                    		obstacles.splice(i, 1);
+                		} else {
+                   			 // Si no está atacando, quitar vida
+                   			 lives--;
+                   			 document.getElementById('vidas').textContent = `Vidas: ${lives}`;
+                   			 obstacles.splice(i, 1); // Eliminar obstáculo tras colisión
+
+                    		if (lives <= 0) {
+                       			 alert('Game Over!');
+                       			 window.location.reload();
+                    		}
+                		}
+            		}
+        		}
+    		}
+		}
+
+
+
+
+        // Iniciar el juego
+        runFrames[0].onload = () => {
+            runFrames[1].onload = () => {
+                duckImage.onload = () => {
+                    attackImage.onload = () => {
+                        gameLoop(); // Iniciar el bucle del juego
+                    };
+                };
+            };
+        };
+    </script>
+</body>
+</html>
